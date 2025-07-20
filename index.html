@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tìm kiếm Camera cho Bảo trì Nhà để xe</title>
+    <!-- Bao gồm Tailwind CSS qua CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Bao gồm prop-types trước -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
+    <!-- Bao gồm React và ReactDOM -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <!-- Bao gồm Babel để chuyển đổi JSX -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+    <!-- Bao gồm PapaParse để phân tích CSV -->
+    <script src="https://unpkg.com/papaparse@latest/papaparse.min.js"></script>
+    <!-- Bao gồm Recharts để trực quan hóa -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
+  </head>
+  <body class="bg-gray-100 font-sans">
+    <div id="root"></div>
+
+    <script type="text/babel">
+      // Khởi tạo React root
+      const root = ReactDOM.createRoot(document.getElementById("root"));
+
+      // Định nghĩa thành phần App chính
+      function App() {
+        const [data, setData] = React.useState([]);
+        const [searchTerm, setSearchTerm] = React.useState("");
+        const [locationFilter, setLocationFilter] = React.useState("");
+        const [zoneFilter, setZoneFilter] = React.useState("");
+        const [sortField, setSortField] = React.useState("");
+        const [sortOrder, setSortOrder] = React.useState("asc");
+        const [isLoading, setIsLoading] = React.useState(true);
+
+        // Tải và phân tích dữ liệu CSV từ file DS.csv
+        React.useEffect(() => {
+          fetch("DS.csv")
+            .then((res) => res.text())
+            .then((csvData) => {
+              Papa.parse(csvData, {
+                header: true,
+                skipEmptyLines: true,
+                transformHeader: (header) =>
+                  header.trim().replace(/^"|"$/g, ""),
+                transform: (value, header) =>
+                  value.trim().replace(/^"|"$/g, ""),
+                complete: (results) => {
+                  const cleanedData = results.data.map((row) => ({
+                    "Vị trí": row["Vị trí"] || "",
+                    IP_Camera: row["IP_Camera"] || "",
+                    "Vị trí camera trên đầu ghi":
+                      row["Vị trí camera trên đầu ghi"] || "",
+                    "Vị trí Camera": row["Vị trí Camera"] || "",
+                  }));
+                  setData(cleanedData);
+                  setIsLoading(false);
+                },
+                error: (err) => {
+                  console.error("Lỗi phân tích CSV:", err);
+                  setIsLoading(false);
+                },
+              });
+            })
+            .catch((err) => {
+              console.error("Lỗi tải file CSV:", err);
+              setIsLoading(false);
+            });
+        }, []);
+
+        // Lấy danh sách vị trí và khu vực duy nhất cho bộ lọc
+        const locations = [...new Set(data.map((row) => row["Vị trí"]))];
+        const zones = [
+          ...new Set(
+            data.map((row) => row["Vị trí Camera"].match(/P\d{1,2}/)?.[0] || "")
+          ),
+        ].filter(Boolean);
+
+        // Xử lý thay đổi tìm kiếm
+        const handleSearch = (e) => setSearchTerm(e.target.value);
+
+        // Xử lý thay đổi bộ lọc vị trí
+        const handleLocationFilter = (e) => setLocationFilter(e.target.value);
+
+        // Xử lý thay đổi bộ lọc khu vực
+        const handleZoneFilter = (e) => setZoneFilter(e.target.value);
+
+        // Xử lý sắp xếp
+        const handleSort = (field) => {
+          setSortField(field);
+          setSortOrder(
+            sortField === field && sortOrder === "asc" ? "desc" : "asc"
+          );
+        };
+
+        // Lọc và sắp xếp dữ liệu
+        const filteredData = data
+          .filter(
+            (row) =>
+              row["Vị trí Camera"]
+                .toLowerCase()
+                .includes(searchTerm.toLowerCase()) ||
+              row["IP_Camera"].toLowerCase().includes(searchTerm.toLowerCase())
+          )
+          .filter((row) =>
+            locationFilter ? row["Vị trí"] === locationFilter : true
+          )
+          .filter((row) =>
+            zoneFilter ? row["Vị trí Camera"].includes(zoneFilter) : true
+          )
+          .sort((a, b) => {
+            if (!sortField) return 0;
+            const aValue = a[sortField] || "";
+            const bValue = b[sortField] || "";
+            return sortOrder === "asc"
+              ? aValue.localeCompare(bValue)
+              : bValue.localeCompare(aValue);
+          });
+
+        // Chuẩn bị dữ liệu cho biểu đồ
+        const locationCounts = locations.map((loc) => ({
+          name: loc,
+          count: data.filter((row) => row["Vị trí"] === loc).length,
+        }));
+
+        // Xuất dữ liệu đã lọc ra CSV
+        const exportToCSV = () => {
+          const csv = Papa.unparse(filteredData);
+          const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+          const link = document.createElement("a");
+          link.href = URL.createObjectURL(blob);
+          link.download = "danh_sach_camera.csv";
+          link.click();
+        };
+
+        // Hiển thị giao diện
+        return (
+          <div className="container mx-auto p-4">
+            <h1 className="text-3xl font-bold text-center text-blue-600 mb-4">
+              Tìm kiếm Camera PARK HILL
+            </h1>
+
+            {/* Thêm bộ lọc và tìm kiếm */}
+            <div className="mb-4 flex flex-col md:flex-row gap-4">
+              <input
+                type="text"
+                placeholder="Tìm kiếm theo Vị trí Camera hoặc IP (ví dụ: Cửa tay quay, P06)"
+                value={searchTerm}
+                onChange={handleSearch}
+                className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <select
+                value={locationFilter}
+                onChange={handleLocationFilter}
+                className="p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Tất cả Vị trí</option>
+                {locations.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {loc}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={zoneFilter}
+                onChange={handleZoneFilter}
+                className="p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Tất cả Khu vực</option>
+                {zones.map((zone) => (
+                  <option key={zone} value={zone}>
+                    {zone}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={exportToCSV}
+                className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Xuất CSV
+              </button>
+            </div>
+
+            {/* Hiển thị bảng dữ liệu */}
+            {isLoading ? (
+              <p className="text-center text-gray-500">Đang tải dữ liệu...</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full table-auto border-collapse bg-white shadow-md rounded-lg">
+                  <thead>
+                    <tr className="bg-blue-600 text-white">
+                      <th
+                        className="p-2 border cursor-pointer"
+                        onClick={() => handleSort("Vị trí")}
+                      >
+                        Vị trí{" "}
+                        {sortField === "Vị trí" &&
+                          (sortOrder === "asc" ? "↑" : "↓")}
+                      </th>
+                      <th
+                        className="p-2 border cursor-pointer"
+                        onClick={() => handleSort("IP_Camera")}
+                      >
+                        IP Camera{" "}
+                        {sortField === "IP_Camera" &&
+                          (sortOrder === "asc" ? "↑" : "↓")}
+                      </th>
+                      <th
+                        className="p-2 border cursor-pointer"
+                        onClick={() => handleSort("Vị trí camera trên đầu ghi")}
+                      >
+                        Vị trí camera trên đầu ghi{" "}
+                        {sortField === "Vị trí camera trên đầu ghi" &&
+                          (sortOrder === "asc" ? "↑" : "↓")}
+                      </th>
+                      <th
+                        className="p-2 border cursor-pointer"
+                        onClick={() => handleSort("Vị trí Camera")}
+                      >
+                        Vị trí Camera{" "}
+                        {sortField === "Vị trí Camera" &&
+                          (sortOrder === "asc" ? "↑" : "↓")}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredData.length > 0 ? (
+                      filteredData.map((row, index) => (
+                        <tr
+                          key={index}
+                          className={
+                            row["Vị trí Camera"].includes("Soát vé") ||
+                            row["Vị trí Camera"].includes("Cửa tay quay")
+                              ? "bg-yellow-100"
+                              : index % 2 === 0
+                              ? "bg-gray-50"
+                              : "bg-white"
+                          }
+                        >
+                          <td className="p-2 border">{row["Vị trí"]}</td>
+                          <td className="p-2 border">{row["IP_Camera"]}</td>
+                          <td className="p-2 border">
+                            {row["Vị trí camera trên đầu ghi"]}
+                          </td>
+                          <td className="p-2 border">{row["Vị trí Camera"]}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan="4"
+                          className="p-2 text-center text-gray-500"
+                        >
+                          Không tìm thấy camera phù hợp với từ khóa.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      // Hiển thị thành phần App
+      root.render(<App />);
+    </script>
+  </body>
+</html>
