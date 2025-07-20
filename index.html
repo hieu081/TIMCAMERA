@@ -3,22 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Quản lý Camera PARK HILL - Đồng bộ thời gian thực</title>
+    <title>Quản lý Camera PARK HILL - Phiên bản nâng cao</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
     <script src="https://unpkg.com/papaparse@latest/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/idb@7/build/umd.js"></script>
-    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js"></script>
+    <script src="https://unpkg.com/react-window@1.8.6/dist/react-window.umd.js"></script>
+    <script>
+      // Khai báo biến FixedSizeList từ react-window
+      const { FixedSizeList } = window.ReactWindow;
+    </script>
   </head>
   <body class="bg-gray-100 font-sans min-h-screen">
     <div id="root"></div>
 
     <script type="text/babel">
-      // ================= CẤU HÌNH FIREBASE =================
+      // ================ CẤU HÌNH FIREBASE ================
       const firebaseConfig = {
         apiKey: "AIzaSyDfYZkJFMR1mD5G59n0EUDdnPdLR5SNo-w",
         authDomain: "vscam-6a746.firebaseapp.com",
@@ -30,14 +35,108 @@
         measurementId: "G-4Z101P6S5G",
       };
 
-      // Khởi tạo Firebase
       if (!firebase.apps.length) {
         firebase.initializeApp(firebaseConfig);
       }
       const database = firebase.database();
 
-      // ================= ỨNG DỤNG CHÍNH =================
+      // ================ CUSTOM HOOKS ================
+      const useScreenSize = () => {
+        const [size, setSize] = React.useState({
+          width: window.innerWidth,
+          height: window.innerHeight,
+        });
+
+        React.useEffect(() => {
+          const handleResize = () =>
+            setSize({
+              width: window.innerWidth,
+              height: window.innerHeight,
+            });
+          window.addEventListener("resize", handleResize);
+          return () => window.removeEventListener("resize", handleResize);
+        }, []);
+
+        return size;
+      };
+
+      // ================ COMPONENTS ================
+      const MobileCameraItem = React.memo(
+        ({ row, onHygieneChange, onNoteChange }) => {
+          return (
+            <div
+              className={`p-3 rounded-lg shadow mb-2 ${
+                row.Hygiene === "Chưa vệ sinh" ? "bg-yellow-50" : "bg-white"
+              }`}
+            >
+              <div className="font-bold">{row["Vị trí Camera"]}</div>
+              <div className="text-sm text-gray-600 mb-2">{row.IP_Camera}</div>
+              <div className="flex items-center gap-2">
+                <select
+                  value={row.Hygiene}
+                  onChange={(e) => onHygieneChange(row.id, e.target.value)}
+                  className={`flex-1 p-1 border rounded text-sm ${
+                    row.Hygiene === "Đã vệ sinh"
+                      ? "bg-green-50"
+                      : "bg-yellow-50"
+                  }`}
+                >
+                  <option value="Chưa vệ sinh">Chưa vệ sinh</option>
+                  <option value="Đã vệ sinh">Đã vệ sinh</option>
+                </select>
+                <input
+                  type="text"
+                  value={row.Note}
+                  onChange={(e) => onNoteChange(row.id, e.target.value)}
+                  placeholder="Ghi chú"
+                  className="flex-1 p-1 border rounded text-sm"
+                />
+              </div>
+            </div>
+          );
+        }
+      );
+
+      const DesktopRow = React.memo(({ data, index, style }) => {
+        const row = data[index];
+        return (
+          <div
+            style={style}
+            className={`flex items-center border-b ${
+              row.Hygiene === "Chưa vệ sinh" ? "bg-yellow-50" : "bg-white"
+            }`}
+          >
+            <div className="w-1/5 p-2">{row["Vị trí"]}</div>
+            <div className="w-1/5 p-2 font-mono text-sm">{row.IP_Camera}</div>
+            <div className="w-2/5 p-2">{row["Vị trí Camera"]}</div>
+            <div className="w-1/5 p-2">
+              <select
+                value={row.Hygiene}
+                onChange={(e) => handleHygieneChange(row.id, e.target.value)}
+                className={`w-full p-1 border rounded ${
+                  row.Hygiene === "Đã vệ sinh" ? "bg-green-50" : "bg-yellow-50"
+                }`}
+              >
+                <option value="Chưa vệ sinh">Chưa vệ sinh</option>
+                <option value="Đã vệ sinh">Đã vệ sinh</option>
+              </select>
+            </div>
+            <div className="w-1/5 p-2">
+              <input
+                type="text"
+                value={row.Note}
+                onChange={(e) => handleNoteChange(row.id, e.target.value)}
+                className="w-full p-1 border rounded text-sm"
+                placeholder="Nhập ghi chú"
+              />
+            </div>
+          </div>
+        );
+      });
+
+      // ================ MAIN APP ================
       const App = () => {
+        const { FixedSizeList } = window.ReactWindow || {};
         const [data, setData] = React.useState([]);
         const [searchTerm, setSearchTerm] = React.useState("");
         const [filters, setFilters] = React.useState({
@@ -46,8 +145,9 @@
           hygiene: "",
         });
         const [isLoading, setIsLoading] = React.useState(true);
-        const [syncStatus, setSyncStatus] = React.useState("Chưa kết nối");
-        const [lastSync, setLastSync] = React.useState("");
+        const [syncStatus, setSyncStatus] = React.useState("Đang kết nối...");
+        const { width } = useScreenSize();
+        const isMobile = width < 768;
 
         // Khởi tạo IndexedDB
         const dbPromise = idb.openDB("CameraDB", 1, {
@@ -57,62 +157,160 @@
           },
         });
 
-        // ================= XỬ LÝ DỮ LIỆU =================
-        React.useEffect(() => {
-          const loadData = async () => {
-            try {
-              // 1. Tải dữ liệu CSV
-              const response = await fetch("DS.csv");
-              const csvData = await response.text();
+        // ================ DATA HANDLING ================
+        const loadData = React.useCallback(async () => {
+          try {
+            // 1. Load CSV data
+            const response = await fetch("DS.csv");
+            const csvData = await response.text();
 
-              Papa.parse(csvData, {
-                header: true,
-                complete: async (results) => {
-                  // 2. Tải dữ liệu từ Firebase
-                  setSyncStatus("Đang đồng bộ...");
-                  const [hygieneSnapshot, notesSnapshot] = await Promise.all([
-                    database.ref("hygieneStatus").once("value"),
-                    database.ref("notes").once("value"),
-                  ]);
+            Papa.parse(csvData, {
+              header: true,
+              complete: async (results) => {
+                // 2. Load from Firebase
+                setSyncStatus("Đang đồng bộ dữ liệu...");
+                const [hygieneSnapshot, notesSnapshot] = await Promise.all([
+                  database.ref("hygieneStatus").once("value"),
+                  database.ref("notes").once("value"),
+                ]);
 
-                  const remoteHygiene = hygieneSnapshot.val() || {};
-                  const remoteNotes = notesSnapshot.val() || {};
+                const remoteHygiene = hygieneSnapshot.val() || {};
+                const remoteNotes = notesSnapshot.val() || {};
 
-                  // 3. Kết hợp dữ liệu
-                  const processedData = results.data.map((row, index) => ({
-                    id: index,
-                    "Vị trí": row["Vị trí"] || "",
-                    IP_Camera: row["IP_Camera"] || "",
-                    "Vị trí camera trên đầu ghi":
-                      row["Vị trí camera trên đầu ghi"] || "",
-                    "Vị trí Camera": row["Vị trí Camera"] || "",
-                    Hygiene: remoteHygiene[index] || "Chưa vệ sinh",
-                    Note: remoteNotes[index] || "",
-                  }));
+                // 3. Process data
+                const processedData = results.data.map((row, index) => ({
+                  id: index,
+                  "Vị trí": row["Vị trí"] || "",
+                  IP_Camera: row["IP_Camera"] || "",
+                  "Vị trí camera trên đầu ghi":
+                    row["Vị trí camera trên đầu ghi"] || "",
+                  "Vị trí Camera": row["Vị trí Camera"] || "",
+                  Hygiene: remoteHygiene[index] || "Chưa vệ sinh",
+                  Note: remoteNotes[index] || "",
+                }));
 
-                  // 4. Lưu vào IndexedDB
-                  const db = await dbPromise;
-                  const tx = db.transaction("hygieneStatus", "readwrite");
-                  Object.entries(remoteHygiene).forEach(([id, status]) => {
-                    tx.store.put({ id: parseInt(id), status });
-                  });
+                // 4. Save to IndexedDB
+                const db = await dbPromise;
+                const tx = db.transaction("hygieneStatus", "readwrite");
+                Object.entries(remoteHygiene).forEach(([id, status]) => {
+                  tx.store.put({ id: parseInt(id), status });
+                });
 
-                  setData(processedData);
-                  setIsLoading(false);
-                  setSyncStatus("Đã kết nối");
-                  setLastSync(new Date().toLocaleTimeString());
-                },
-              });
-            } catch (error) {
-              console.error("Lỗi tải dữ liệu:", error);
-              setIsLoading(false);
-              setSyncStatus("Lỗi kết nối");
+                setData(processedData);
+                setIsLoading(false);
+                setSyncStatus(`Đã đồng bộ: ${new Date().toLocaleTimeString()}`);
+              },
+            });
+          } catch (error) {
+            console.error("Lỗi tải dữ liệu:", error);
+            setIsLoading(false);
+            setSyncStatus("Lỗi kết nối");
+          }
+        }, []);
+
+        // ================ SYNC HANDLERS ================
+        const handleHygieneChange = React.useCallback(async (id, value) => {
+          try {
+            // 1. Update UI immediately
+            setData((prev) =>
+              prev.map((row) =>
+                row.id === id ? { ...row, Hygiene: value } : row
+              )
+            );
+
+            // 2. Save to IndexedDB
+            const db = await dbPromise;
+            await db.put("hygieneStatus", { id, status: value });
+
+            // 3. Sync to Firebase
+            await database.ref(`hygieneStatus/${id}`).set(value);
+            setSyncStatus(`Đã cập nhật: ${new Date().toLocaleTimeString()}`);
+          } catch (error) {
+            console.error("Lỗi cập nhật trạng thái:", error);
+          }
+        }, []);
+
+        const handleNoteChange = React.useCallback(async (id, value) => {
+          try {
+            setData((prev) =>
+              prev.map((row) => (row.id === id ? { ...row, Note: value } : row))
+            );
+
+            const db = await dbPromise;
+            await db.put("notes", { id, note: value });
+
+            await database.ref(`notes/${id}`).set(value);
+          } catch (error) {
+            console.error("Lỗi cập nhật ghi chú:", error);
+          }
+        }, []);
+
+        // ================ BATCH ACTIONS ================
+        const handleMarkAllPending = async () => {
+          if (!confirm("Đánh dấu TẤT CẢ camera hiển thị là 'Chưa vệ sinh'?"))
+            return;
+
+          const batchUpdates = {};
+          const db = await dbPromise;
+          const tx = db.transaction("hygieneStatus", "readwrite");
+
+          filteredData.forEach((row) => {
+            if (row.Hygiene !== "Chưa vệ sinh") {
+              batchUpdates[row.id] = "Chưa vệ sinh";
+              tx.store.put({ id: row.id, status: "Chưa vệ sinh" });
             }
-          };
+          });
 
+          await database.ref("hygieneStatus").update(batchUpdates);
+          setSyncStatus(
+            `Đã cập nhật hàng loạt: ${new Date().toLocaleTimeString()}`
+          );
+        };
+
+        const handleMarkAllCleaned = async () => {
+          if (!confirm("Đánh dấu TẤT CẢ camera hiển thị là 'Đã vệ sinh'?"))
+            return;
+
+          const batchUpdates = {};
+          const db = await dbPromise;
+          const tx = db.transaction("hygieneStatus", "readwrite");
+
+          filteredData.forEach((row) => {
+            if (row.Hygiene !== "Đã vệ sinh") {
+              batchUpdates[row.id] = "Đã vệ sinh";
+              tx.store.put({ id: row.id, status: "Đã vệ sinh" });
+            }
+          });
+
+          await database.ref("hygieneStatus").update(batchUpdates);
+          setSyncStatus(
+            `Đã cập nhật hàng loạt: ${new Date().toLocaleTimeString()}`
+          );
+        };
+
+        // ================ DATA FILTERING ================
+        const filteredData = React.useMemo(() => {
+          return data.filter((row) => {
+            const matchesSearch = searchTerm
+              ? Object.values(row).some((val) =>
+                  String(val).toLowerCase().includes(searchTerm.toLowerCase())
+                )
+              : true;
+
+            const matchesFilters =
+              (!filters.location || row["Vị trí"] === filters.location) &&
+              (!filters.zone || row["Vị trí Camera"].includes(filters.zone)) &&
+              (!filters.hygiene || row.Hygiene === filters.hygiene);
+
+            return matchesSearch && matchesFilters;
+          });
+        }, [data, searchTerm, filters]);
+
+        // ================ EFFECTS ================
+        React.useEffect(() => {
           loadData();
 
-          // Lắng nghe thay đổi từ Firebase
+          // Setup Firebase listeners
           const hygieneRef = database.ref("hygieneStatus");
           const notesRef = database.ref("notes");
 
@@ -124,7 +322,7 @@
                 Hygiene: remoteData[row.id] || row.Hygiene,
               }))
             );
-            setLastSync(new Date().toLocaleTimeString());
+            setSyncStatus(`Đã đồng bộ: ${new Date().toLocaleTimeString()}`);
           });
 
           notesRef.on("value", (snapshot) => {
@@ -141,109 +339,54 @@
             hygieneRef.off();
             notesRef.off();
           };
-        }, []);
+        }, [loadData]);
 
-        // ================= XỬ LÝ THAY ĐỔI =================
-        const handleHygieneChange = async (id, value) => {
-          try {
-            // 1. Cập nhật UI ngay lập tức
-            setData((prev) =>
-              prev.map((row) =>
-                row.id === id ? { ...row, Hygiene: value } : row
-              )
-            );
-
-            // 2. Lưu vào IndexedDB
-            const db = await dbPromise;
-            await db.put("hygieneStatus", { id, status: value });
-
-            // 3. Đồng bộ lên Firebase
-            await database.ref(`hygieneStatus/${id}`).set(value);
-            setLastSync(new Date().toLocaleTimeString());
-          } catch (error) {
-            console.error("Lỗi khi cập nhật trạng thái:", error);
-          }
-        };
-
-        const handleNoteChange = async (id, value) => {
-          try {
-            setData((prev) =>
-              prev.map((row) => (row.id === id ? { ...row, Note: value } : row))
-            );
-
-            const db = await dbPromise;
-            await db.put("notes", { id, note: value });
-
-            await database.ref(`notes/${id}`).set(value);
-          } catch (error) {
-            console.error("Lỗi khi cập nhật ghi chú:", error);
-          }
-        };
-
-        // ================= LỌC DỮ LIỆU =================
-        const filteredData = data.filter((row) => {
-          const matchesSearch = searchTerm
-            ? Object.values(row).some((val) =>
-                String(val).toLowerCase().includes(searchTerm.toLowerCase())
-              )
-            : true;
-
-          const matchesFilters =
-            (!filters.location || row["Vị trí"] === filters.location) &&
-            (!filters.zone || row["Vị trí Camera"].includes(filters.zone)) &&
-            (!filters.hygiene || row.Hygiene === filters.hygiene);
-
-          return matchesSearch && matchesFilters;
-        });
-
-        // Lấy danh sách options cho bộ lọc
-        const locations = [...new Set(data.map((row) => row["Vị trí"]))];
-        const zones = [
-          ...new Set(
-            data.map((row) => row["Vị trí Camera"].match(/P\d{1,2}/)?.[0] || "")
-          ),
-        ].filter(Boolean);
-        const hygieneOptions = ["Chưa vệ sinh", "Đã vệ sinh"];
-
-        // ================= GIAO DIỆN =================
-        return (
-          <div className="container mx-auto p-4 max-w-7xl">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-              <div>
-                <h1 className="text-2xl font-bold text-blue-600">
-                  QUẢN LÝ CAMERA PARK HILL
-                </h1>
-                <div className="text-sm text-gray-500 mt-1">
-                  Trạng thái:{" "}
-                  <span
-                    className={
-                      syncStatus === "Đã kết nối"
-                        ? "text-green-500"
-                        : "text-red-500"
-                    }
-                  >
-                    {syncStatus} | Lần cuối đồng bộ: {lastSync}
-                  </span>
-                </div>
+        // ================ RENDER ================
+        if (isLoading) {
+          return (
+            <div className="flex justify-center items-center h-screen">
+              <div className="text-center">
+                <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+                <p className="mt-4 text-lg">Đang tải dữ liệu...</p>
               </div>
-              <div className="text-right">
-                <div className="text-sm">
-                  Tổng camera: <span className="font-bold">{data.length}</span>{" "}
-                  | Đã vệ sinh:{" "}
-                  <span className="text-green-500 font-bold">
-                    {data.filter((d) => d.Hygiene === "Đã vệ sinh").length}
-                  </span>
-                </div>
+            </div>
+          );
+        }
+
+        return (
+          <div className="container mx-auto p-2 md:p-4 max-w-7xl">
+            {/* Header */}
+            <div
+              className={`flex ${
+                isMobile ? "flex-col" : "items-center justify-between"
+              } mb-4 gap-2`}
+            >
+              <h1
+                className={`${
+                  isMobile ? "text-xl" : "text-2xl"
+                } font-bold text-blue-600`}
+              >
+                QUẢN LÝ CAMERA PARK HILL
+              </h1>
+              <div
+                className={`text-sm ${isMobile ? "self-end" : ""} ${
+                  syncStatus.includes("Lỗi") ? "text-red-500" : "text-green-600"
+                }`}
+              >
+                {syncStatus}
               </div>
             </div>
 
-            {/* Bộ lọc */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6 p-4 bg-white rounded-lg shadow">
+            {/* Filters */}
+            <div
+              className={`grid ${
+                isMobile ? "grid-cols-1" : "grid-cols-4"
+              } gap-2 mb-4`}
+            >
               <input
                 type="text"
-                placeholder="Tìm kiếm theo IP, vị trí..."
-                className="p-2 border rounded focus:ring-2 focus:ring-blue-500"
+                placeholder="Tìm kiếm..."
+                className="p-2 border rounded"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -256,7 +399,7 @@
                 className="p-2 border rounded"
               >
                 <option value="">Tất cả vị trí</option>
-                {locations.map((loc) => (
+                {[...new Set(data.map((row) => row["Vị trí"]))].map((loc) => (
                   <option key={loc} value={loc}>
                     {loc}
                   </option>
@@ -271,11 +414,19 @@
                 className="p-2 border rounded"
               >
                 <option value="">Tất cả khu vực</option>
-                {zones.map((zone) => (
-                  <option key={zone} value={zone}>
-                    {zone}
-                  </option>
-                ))}
+                {[
+                  ...new Set(
+                    data.map(
+                      (row) => row["Vị trí Camera"].match(/P\d{1,2}/)?.[0] || ""
+                    )
+                  ),
+                ]
+                  .filter(Boolean)
+                  .map((zone) => (
+                    <option key={zone} value={zone}>
+                      {zone}
+                    </option>
+                  ))}
               </select>
 
               <select
@@ -286,154 +437,158 @@
                 className="p-2 border rounded"
               >
                 <option value="">Tất cả trạng thái</option>
-                {hygieneOptions.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
+                <option value="Đã vệ sinh">Đã vệ sinh</option>
+                <option value="Chưa vệ sinh">Chưa vệ sinh</option>
               </select>
+            </div>
 
+            {/* Batch Actions */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                onClick={handleMarkAllPending}
+                className="px-3 py-1 md:px-4 md:py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-sm"
+              >
+                Đánh dấu tất cả CHƯA vệ sinh
+              </button>
+              <button
+                onClick={handleMarkAllCleaned}
+                className="px-3 py-1 md:px-4 md:py-2 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+              >
+                Đánh dấu tất cả ĐÃ vệ sinh
+              </button>
               <button
                 onClick={() => {
                   setSearchTerm("");
                   setFilters({ location: "", zone: "", hygiene: "" });
                 }}
-                className="p-2 bg-gray-200 rounded hover:bg-gray-300"
+                className="px-3 py-1 md:px-4 md:py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm"
               >
                 Xóa bộ lọc
               </button>
             </div>
 
-            {/* Bảng dữ liệu */}
-            {isLoading ? (
-              <div className="text-center py-8">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-                <p className="mt-2">Đang tải dữ liệu...</p>
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              <div className="bg-white p-2 rounded shadow text-center">
+                <div className="text-gray-500 text-sm">Tổng số</div>
+                <div className="font-bold">{filteredData.length}</div>
+              </div>
+              <div className="bg-green-50 p-2 rounded shadow text-center">
+                <div className="text-green-700 text-sm">Đã vệ sinh</div>
+                <div className="font-bold text-green-700">
+                  {
+                    filteredData.filter((d) => d.Hygiene === "Đã vệ sinh")
+                      .length
+                  }
+                </div>
+              </div>
+              <div className="bg-yellow-50 p-2 rounded shadow text-center">
+                <div className="text-yellow-700 text-sm">Chưa vệ sinh</div>
+                <div className="font-bold text-yellow-700">
+                  {
+                    filteredData.filter((d) => d.Hygiene === "Chưa vệ sinh")
+                      .length
+                  }
+                </div>
+              </div>
+            </div>
+
+            {/* Data Display */}
+            {isMobile ? (
+              <div className="space-y-2">
+                {filteredData.map((row) => (
+                  <MobileCameraItem
+                    key={row.id}
+                    row={row}
+                    onHygieneChange={handleHygieneChange}
+                    onNoteChange={handleNoteChange}
+                  />
+                ))}
+              </div>
+            ) : FixedSizeList ? (
+              <div className="bg-white rounded-lg shadow overflow-hidden">
+                {/* Table Header */}
+                <div className="flex bg-blue-600 text-white">
+                  <div className="w-1/5 p-2">Vị trí</div>
+                  <div className="w-1/5 p-2">IP Camera</div>
+                  <div className="w-2/5 p-2">Vị trí Camera</div>
+                  <div className="w-1/5 p-2">Trạng thái</div>
+                  <div className="w-1/5 p-2">Ghi chú</div>
+                </div>
+
+                {/* Virtualized List */}
+                <div style={{ height: "600px" }}>
+                  <FixedSizeList
+                    height={600}
+                    itemCount={filteredData.length}
+                    itemSize={50}
+                    width="100%"
+                    itemData={filteredData}
+                  >
+                    {DesktopRow}
+                  </FixedSizeList>
+                </div>
               </div>
             ) : (
-              <>
-                <div className="overflow-x-auto bg-white rounded-lg shadow">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-blue-600 text-white">
-                      <tr>
-                        <th className="px-4 py-3 text-left">Vị trí</th>
-                        <th className="px-4 py-3 text-left">IP Camera</th>
-                        <th className="px-4 py-3 text-left">Vị trí Camera</th>
-                        <th className="px-4 py-3 text-left">Trạng thái</th>
-                        <th className="px-4 py-3 text-left">Ghi chú</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {filteredData.length > 0 ? (
-                        filteredData.map((row) => (
-                          <tr
-                            key={row.id}
-                            className={
-                              row.Hygiene === "Chưa vệ sinh"
-                                ? "bg-yellow-50 hover:bg-yellow-100"
-                                : "hover:bg-gray-50"
-                            }
-                          >
-                            <td className="px-4 py-2">{row["Vị trí"]}</td>
-                            <td className="px-4 py-2 font-mono">
-                              {row["IP_Camera"]}
-                            </td>
-                            <td className="px-4 py-2">
-                              {row["Vị trí Camera"]}
-                            </td>
-                            <td className="px-4 py-2">
-                              <select
-                                value={row.Hygiene}
-                                onChange={(e) =>
-                                  handleHygieneChange(row.id, e.target.value)
-                                }
-                                className={`p-1 border rounded ${
-                                  row.Hygiene === "Đã vệ sinh"
-                                    ? "bg-green-50"
-                                    : "bg-yellow-50"
-                                }`}
-                              >
-                                {hygieneOptions.map((opt) => (
-                                  <option key={opt} value={opt}>
-                                    {opt}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td className="px-4 py-2">
-                              <input
-                                type="text"
-                                value={row.Note}
-                                onChange={(e) =>
-                                  handleNoteChange(row.id, e.target.value)
-                                }
-                                placeholder="Nhập ghi chú..."
-                                className="w-full p-1 border rounded focus:ring-2 focus:ring-blue-300"
-                              />
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td
-                            colSpan="5"
-                            className="px-4 py-8 text-center text-gray-500"
-                          >
-                            Không tìm thấy camera nào phù hợp
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+              <div className="bg-white rounded-lg shadow overflow-hidden">
+                {/* Fallback khi FixedSizeList không khả dụng */}
+                <div className="flex bg-blue-600 text-white">
+                  <div className="w-1/5 p-2">Vị trí</div>
+                  <div className="w-1/5 p-2">IP Camera</div>
+                  <div className="w-2/5 p-2">Vị trí Camera</div>
+                  <div className="w-1/5 p-2">Trạng thái</div>
+                  <div className="w-1/5 p-2">Ghi chú</div>
                 </div>
-
-                {/* Công cụ hàng loạt */}
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    onClick={() => {
-                      if (
-                        confirm(
-                          "Đánh dấu TẤT CẢ camera hiển thị là 'Đã vệ sinh'?"
-                        )
-                      ) {
-                        filteredData.forEach((row) => {
-                          if (row.Hygiene !== "Đã vệ sinh") {
-                            handleHygieneChange(row.id, "Đã vệ sinh");
-                          }
-                        });
-                      }
-                    }}
-                    className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                {filteredData.map((row) => (
+                  <div
+                    key={row.id}
+                    className={`flex items-center border-b ${
+                      row.Hygiene === "Chưa vệ sinh"
+                        ? "bg-yellow-50"
+                        : "bg-white"
+                    }`}
                   >
-                    Đánh dấu đã vệ sinh (tất cả hiển thị)
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      const csvData = Papa.unparse(filteredData);
-                      const blob = new Blob([csvData], {
-                        type: "text/csv;charset=utf-8;",
-                      });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `camera_report_${new Date()
-                        .toISOString()
-                        .slice(0, 10)}.csv`;
-                      a.click();
-                    }}
-                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                  >
-                    Xuất CSV (bản hiển thị)
-                  </button>
-                </div>
-              </>
+                    <div className="w-1/5 p-2">{row["Vị trí"]}</div>
+                    <div className="w-1/5 p-2 font-mono text-sm">
+                      {row.IP_Camera}
+                    </div>
+                    <div className="w-2/5 p-2">{row["Vị trí Camera"]}</div>
+                    <div className="w-1/5 p-2">
+                      <select
+                        value={row.Hygiene}
+                        onChange={(e) =>
+                          handleHygieneChange(row.id, e.target.value)
+                        }
+                        className={`w-full p-1 border rounded ${
+                          row.Hygiene === "Đã vệ sinh"
+                            ? "bg-green-50"
+                            : "bg-yellow-50"
+                        }`}
+                      >
+                        <option value="Chưa vệ sinh">Chưa vệ sinh</option>
+                        <option value="Đã vệ sinh">Đã vệ sinh</option>
+                      </select>
+                    </div>
+                    <div className="w-1/5 p-2">
+                      <input
+                        type="text"
+                        value={row.Note}
+                        onChange={(e) =>
+                          handleNoteChange(row.id, e.target.value)
+                        }
+                        className="w-full p-1 border rounded text-sm"
+                        placeholder="Nhập ghi chú"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         );
       };
 
-      // Render ứng dụng
+      // Render app
       const root = ReactDOM.createRoot(document.getElementById("root"));
       root.render(<App />);
     </script>
