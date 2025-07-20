@@ -15,10 +15,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
     <!-- Bao gồm PapaParse để phân tích CSV -->
     <script src="https://unpkg.com/papaparse@latest/papaparse.min.js"></script>
-    <!-- Bao gồm Recharts để trực quan hóa -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
   </head>
-  <body class="bg-gray-100 font-sans">
+  <body class="bg-gray-100 font-sans min-h-screen">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -31,9 +29,41 @@
         const [searchTerm, setSearchTerm] = React.useState("");
         const [locationFilter, setLocationFilter] = React.useState("");
         const [zoneFilter, setZoneFilter] = React.useState("");
+        const [hygieneFilter, setHygieneFilter] = React.useState("");
         const [sortField, setSortField] = React.useState("");
         const [sortOrder, setSortOrder] = React.useState("asc");
         const [isLoading, setIsLoading] = React.useState(true);
+        const [notes, setNotes] = React.useState({});
+        const [currentPage, setCurrentPage] = React.useState(1);
+        const [itemsPerPage] = React.useState(10);
+        const [showFilters, setShowFilters] = React.useState(false);
+        const [suggestions, setSuggestions] = React.useState([]);
+
+        // Tải và khôi phục trạng thái từ localStorage
+        React.useEffect(() => {
+          const savedState = JSON.parse(
+            localStorage.getItem("cameraFilters") || "{}"
+          );
+          setSearchTerm(savedState.searchTerm || "");
+          setLocationFilter(savedState.locationFilter || "");
+          setZoneFilter(savedState.zoneFilter || "");
+          setHygieneFilter(savedState.hygieneFilter || "");
+          setNotes(savedState.notes || {});
+        }, []);
+
+        // Lưu trạng thái vào localStorage
+        React.useEffect(() => {
+          localStorage.setItem(
+            "cameraFilters",
+            JSON.stringify({
+              searchTerm,
+              locationFilter,
+              zoneFilter,
+              hygieneFilter,
+              notes,
+            })
+          );
+        }, [searchTerm, locationFilter, zoneFilter, hygieneFilter, notes]);
 
         // Tải và phân tích dữ liệu CSV từ file DS.csv
         React.useEffect(() => {
@@ -48,12 +78,14 @@
                 transform: (value, header) =>
                   value.trim().replace(/^"|"$/g, ""),
                 complete: (results) => {
-                  const cleanedData = results.data.map((row) => ({
+                  const cleanedData = results.data.map((row, index) => ({
+                    id: index,
                     "Vị trí": row["Vị trí"] || "",
                     IP_Camera: row["IP_Camera"] || "",
                     "Vị trí camera trên đầu ghi":
                       row["Vị trí camera trên đầu ghi"] || "",
                     "Vị trí Camera": row["Vị trí Camera"] || "",
+                    Hygiene: row["Hygiene"] || "Chưa vệ sinh",
                   }));
                   setData(cleanedData);
                   setIsLoading(false);
@@ -70,22 +102,76 @@
             });
         }, []);
 
-        // Lấy danh sách vị trí và khu vực duy nhất cho bộ lọc
+        // Lấy danh sách vị trí, khu vực và trạng thái vệ sinh duy nhất
         const locations = [...new Set(data.map((row) => row["Vị trí"]))];
         const zones = [
           ...new Set(
             data.map((row) => row["Vị trí Camera"].match(/P\d{1,2}/)?.[0] || "")
           ),
         ].filter(Boolean);
+        const hygieneOptions = ["Chưa vệ sinh", "Đã vệ sinh"];
+
+        // Xử lý gợi ý tìm kiếm
+        React.useEffect(() => {
+          if (searchTerm) {
+            const searchSuggestions = data
+              .flatMap((row) => [
+                row["Vị trí"],
+                row["IP_Camera"],
+                row["Vị trí Camera"],
+                notes[row.id] || "",
+              ])
+              .filter(
+                (value) =>
+                  value &&
+                  value.toLowerCase().includes(searchTerm.toLowerCase())
+              )
+              .slice(0, 5);
+            setSuggestions([...new Set(searchSuggestions)]);
+          } else {
+            setSuggestions([]);
+          }
+        }, [searchTerm, data, notes]);
 
         // Xử lý thay đổi tìm kiếm
-        const handleSearch = (e) => setSearchTerm(e.target.value);
+        const handleSearch = (e) => {
+          setSearchTerm(e.target.value);
+          setCurrentPage(1);
+        };
 
-        // Xử lý thay đổi bộ lọc vị trí
-        const handleLocationFilter = (e) => setLocationFilter(e.target.value);
+        // Xử lý chọn gợi ý
+        const handleSuggestionClick = (suggestion) => {
+          setSearchTerm(suggestion);
+          setSuggestions([]);
+        };
 
-        // Xử lý thay đổi bộ lọc khu vực
-        const handleZoneFilter = (e) => setZoneFilter(e.target.value);
+        // Xử lý thay đổi bộ lọc
+        const handleLocationFilter = (e) => {
+          setLocationFilter(e.target.value);
+          setCurrentPage(1);
+        };
+        const handleZoneFilter = (e) => {
+          setZoneFilter(e.target.value);
+          setCurrentPage(1);
+        };
+        const handleHygieneFilter = (e) => {
+          setHygieneFilter(e.target.value);
+          setCurrentPage(1);
+        };
+
+        // Xử lý thay đổi trạng thái vệ sinh
+        const handleHygieneChange = (id, value) => {
+          setData((prevData) =>
+            prevData.map((row) =>
+              row.id === id ? { ...row, Hygiene: value } : row
+            )
+          );
+        };
+
+        // Xử lý thay đổi ghi chú
+        const handleNoteChange = (id, value) => {
+          setNotes((prevNotes) => ({ ...prevNotes, [id]: value }));
+        };
 
         // Xử lý sắp xếp
         const handleSort = (field) => {
@@ -93,22 +179,35 @@
           setSortOrder(
             sortField === field && sortOrder === "asc" ? "desc" : "asc"
           );
+          setCurrentPage(1);
         };
 
-        // Lọc và sắp xếp dữ liệu
+        // Lọc và sắp xếp Substitute dữ liệu
         const filteredData = data
-          .filter(
-            (row) =>
-              row["Vị trí Camera"]
-                .toLowerCase()
-                .includes(searchTerm.toLowerCase()) ||
-              row["IP_Camera"].toLowerCase().includes(searchTerm.toLowerCase())
+          .filter((row) =>
+            searchTerm
+              ? row["Vị trí Camera"]
+                  .toLowerCase()
+                  .includes(searchTerm.toLowerCase()) ||
+                row["IP_Camera"]
+                  .toLowerCase()
+                  .includes(searchTerm.toLowerCase()) ||
+                row["Vị trí"]
+                  .toLowerCase()
+                  .includes(searchTerm.toLowerCase()) ||
+                (notes[row.id] || "")
+                  .toLowerCase()
+                  .includes(searchTerm.toLowerCase())
+              : true
           )
           .filter((row) =>
             locationFilter ? row["Vị trí"] === locationFilter : true
           )
           .filter((row) =>
             zoneFilter ? row["Vị trí Camera"].includes(zoneFilter) : true
+          )
+          .filter((row) =>
+            hygieneFilter ? row["Hygiene"] === hygieneFilter : true
           )
           .sort((a, b) => {
             if (!sortField) return 0;
@@ -119,15 +218,25 @@
               : bValue.localeCompare(aValue);
           });
 
-        // Chuẩn bị dữ liệu cho biểu đồ
-        const locationCounts = locations.map((loc) => ({
-          name: loc,
-          count: data.filter((row) => row["Vị trí"] === loc).length,
-        }));
+        // Phân trang
+        const indexOfLastItem = currentPage * itemsPerPage;
+        const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+        const currentItems = filteredData.slice(
+          indexOfFirstItem,
+          indexOfLastItem
+        );
+        const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+
+        // Xử lý chuyển trang
+        const paginate = (pageNumber) => setCurrentPage(pageNumber);
 
         // Xuất dữ liệu đã lọc ra CSV
         const exportToCSV = () => {
-          const csv = Papa.unparse(filteredData);
+          const csvData = filteredData.map((row) => ({
+            ...row,
+            Ghi_chu: notes[row.id] || "",
+          }));
+          const csv = Papa.unparse(csvData);
           const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
           const link = document.createElement("a");
           link.href = URL.createObjectURL(blob);
@@ -137,24 +246,53 @@
 
         // Hiển thị giao diện
         return (
-          <div className="container mx-auto p-4">
-            <h1 className="text-3xl font-bold text-center text-blue-600 mb-4">
+          <div className="container mx-auto p-4 sm:p-6 max-w-full">
+            <h1 className="text-2xl sm:text-3xl font-bold text-center text-blue-600 mb-4 sm:mb-6">
               Tìm kiếm Camera PARK HILL
             </h1>
 
-            {/* Thêm bộ lọc và tìm kiếm */}
-            <div className="mb-4 flex flex-col md:flex-row gap-4">
-              <input
-                type="text"
-                placeholder="Tìm kiếm theo Vị trí Camera hoặc IP (ví dụ: Cửa tay quay, P06)"
-                value={searchTerm}
-                onChange={handleSearch}
-                className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+            {/* Nút toggle bộ lọc trên di động */}
+            <div className="sm:hidden mb-4">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="w-full p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+              >
+                {showFilters ? "Ẩn bộ lọc" : "Hiện bộ lọc"}
+              </button>
+            </div>
+
+            {/* Bộ lọc và tìm kiếm */}
+            <div
+              className={`${
+                showFilters ? "block" : "hidden"
+              } sm:block mb-4 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:gap-2 relative`}
+            >
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  placeholder="Tìm kiếm theo Vị trí, IP, Camera, Ghi chú..."
+                  value={searchTerm}
+                  onChange={handleSearch}
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
+                />
+                {suggestions.length > 0 && (
+                  <ul className="absolute z-10 w-full bg-white border border-gray-300 rounded-lg mt-1 max-h-40 overflow-y-auto">
+                    {suggestions.map((suggestion, index) => (
+                      <li
+                        key={index}
+                        onClick={() => handleSuggestionClick(suggestion)}
+                        className="p-2 hover:bg-gray-100 cursor-pointer text-sm"
+                      >
+                        {suggestion}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
               <select
                 value={locationFilter}
                 onChange={handleLocationFilter}
-                className="p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
               >
                 <option value="">Tất cả Vị trí</option>
                 {locations.map((loc) => (
@@ -166,7 +304,7 @@
               <select
                 value={zoneFilter}
                 onChange={handleZoneFilter}
-                className="p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
               >
                 <option value="">Tất cả Khu vực</option>
                 {zones.map((zone) => (
@@ -175,9 +313,21 @@
                   </option>
                 ))}
               </select>
+              <select
+                value={hygieneFilter}
+                onChange={handleHygieneFilter}
+                className="p-2 border border-gray-300 rounded-Danh sách camera và tìm kiếm nâng cao cho bảo trì nhà để xe lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
+              >
+                <option value="">Tất cả trạng thái vệ sinh</option>
+                {hygieneOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
               <button
                 onClick={exportToCSV}
-                className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm sm:text-base"
               >
                 Xuất CSV
               </button>
@@ -188,7 +338,7 @@
               <p className="text-center text-gray-500">Đang tải dữ liệu...</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full table-auto border-collapse bg-white shadow-md rounded-lg">
+                <table className="w-full table-auto border-collapse bg-white shadow-md rounded-lg text-sm sm:text-base">
                   <thead>
                     <tr className="bg-blue-600 text-white">
                       <th
@@ -211,7 +361,7 @@
                         className="p-2 border cursor-pointer"
                         onClick={() => handleSort("Vị trí camera trên đầu ghi")}
                       >
-                        Vị trí camera trên đầu ghi{" "}
+                        Vị trí trên đầu ghi{" "}
                         {sortField === "Vị trí camera trên đầu ghi" &&
                           (sortOrder === "asc" ? "↑" : "↓")}
                       </th>
@@ -223,18 +373,27 @@
                         {sortField === "Vị trí Camera" &&
                           (sortOrder === "asc" ? "↑" : "↓")}
                       </th>
+                      <th
+                        className="p-2 border cursor-pointer"
+                        onClick={() => handleSort("Hygiene")}
+                      >
+                        Trạng thái vệ sinh{" "}
+                        {sortField === "Hygiene" &&
+                          (sortOrder === "asc" ? "↑" : "↓")}
+                      </th>
+                      <th className="p-2 border">Ghi chú</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredData.length > 0 ? (
-                      filteredData.map((row, index) => (
+                    {currentItems.length > 0 ? (
+                      currentItems.map((row) => (
                         <tr
-                          key={index}
+                          key={row.id}
                           className={
                             row["Vị trí Camera"].includes("Soát vé") ||
                             row["Vị trí Camera"].includes("Cửa tay quay")
                               ? "bg-yellow-100"
-                              : index % 2 === 0
+                              : row.id % 2 === 0
                               ? "bg-gray-50"
                               : "bg-white"
                           }
@@ -245,12 +404,38 @@
                             {row["Vị trí camera trên đầu ghi"]}
                           </td>
                           <td className="p-2 border">{row["Vị trí Camera"]}</td>
+                          <td className="p-2 border">
+                            <select
+                              value={row["Hygiene"]}
+                              onChange={(e) =>
+                                handleHygieneChange(row.id, e.target.value)
+                              }
+                              className="p-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            >
+                              {hygieneOptions.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="p-2 border">
+                            <input
+                              type="text"
+                              value={notes[row.id] || ""}
+                              onChange={(e) =>
+                                handleNoteChange(row.id, e.target.value)
+                              }
+                              placeholder="Thêm ghi chú..."
+                              className="w-full p-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            />
+                          </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
                         <td
-                          colSpan="4"
+                          colSpan="6"
                           className="p-2 text-center text-gray-500"
                         >
                           Không tìm thấy camera phù hợp với từ khóa.
@@ -259,6 +444,39 @@
                     )}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* Phân trang */}
+            {totalPages > 1 && (
+              <div className="flex justify-center mt-4">
+                <button
+                  onClick={() => paginate(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="p-2 mx-1 bg-gray-300 text-gray-700 rounded-lg disabled:opacity-50"
+                >
+                  Trước
+                </button>
+                {[...Array(totalPages).keys()].map((number) => (
+                  <button
+                    key={number + 1}
+                    onClick={() => paginate(number + 1)}
+                    className={`p-2 mx-1 rounded-lg ${
+                      currentPage === number + 1
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-300 text-gray-700"
+                    }`}
+                  >
+                    {number + 1}
+                  </button>
+                ))}
+                <button
+                  onClick={() => paginate(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="p-2 mx-1 bg-gray-300 text-gray-700 rounded-lg disabled:opacity-50"
+                >
+                  Sau
+                </button>
               </div>
             )}
           </div>
